@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Python Interpreter in JavaScript</title>
+  </head>
+  <body>
+    <h1>Python Interpreter</h1>
+    <textarea id="pythonCode" rows="10" cols="50"></textarea><br />
+    <button id="executeButton">Execute</button>
+    <p id="output"></p>
+
+    <script>
+      document.addEventListener("DOMContentLoaded", function () {
+        // A variável 'variables' é declarada aqui, no escopo do evento 'DOMContentLoaded'
+        // Isso permite que ela seja acessível pelas funções 'executePython', 'evaluate', e outras.
+        var variables = {};
+        // Definindo a função executePython
+        function executePython() {
+          try {
+            var pythonCode = document.getElementById("pythonCode").value;
+            var tokens = lexer(pythonCode);
+            var expression = parser(tokens);
+            var result = evaluate(expression);
+            document.getElementById("output").innerText = "Output: " + result;
+          } catch (error) {
+            // Aqui capturamos o erro e o mostramos no elemento de saída
+            document.getElementById("output").innerText =
+              "Error: " + error.message;
+          }
+        }
+
+        document
+          .getElementById("executeButton")
+          .addEventListener("click", executePython);
+
+        function lexer(input) {
+          var tokens = [];
+          var i = 0;
+
+          while (i < input.length) {
+            var currentChar = input[i];
+
+            // Verificando se o caractere é um número
+            if (
+              /\d/.test(currentChar) ||
+              (currentChar === "-" && /\d/.test(input[i + 1]))
+            ) {
+              var number = "";
+              if (currentChar === "-") {
+                number += currentChar;
+                i++;
+                currentChar = input[i];
+              }
+              while (/\d/.test(currentChar) || currentChar === ".") {
+                number += currentChar;
+                i++;
+                currentChar = input[i];
+              }
+              tokens.push({ type: "NUMBER", value: parseFloat(number) });
+              continue;
+            }
+
+            // Verificando operadores
+            if (
+              currentChar === "+" ||
+              currentChar === "-" ||
+              currentChar === "*" ||
+              currentChar === "/"
+            ) {
+              tokens.push({ type: "OPERATOR", value: currentChar });
+              i++;
+              continue;
+            }
+
+            // Verificando parênteses
+            if (currentChar === "(" || currentChar === ")") {
+              tokens.push({ type: "PARENTHESIS", value: currentChar });
+              i++;
+              continue;
+            }
+
+            // Reconhecendo identificadores (para variáveis)
+            if (/[a-zA-Z_]/.test(currentChar)) {
+              var identifier = "";
+              while (/[a-zA-Z0-9_]/.test(currentChar)) {
+                identifier += currentChar;
+                i++;
+                currentChar = input[i];
+              }
+              tokens.push({ type: "IDENTIFIER", value: identifier });
+              continue;
+            }
+
+            // Reconhecendo o operador de atribuição
+            if (currentChar === "=") {
+              tokens.push({ type: "OPERATOR", value: currentChar });
+              i++;
+              continue;
+            }
+
+            // Espaços e outros caracteres são ignorados
+            i++;
+          }
+
+          return tokens;
+        }
+
+        function parser(tokens) {
+          var currentTokenIndex = 0;
+
+          function consumeToken() {
+            return tokens[currentTokenIndex++];
+          }
+
+          function peekToken() {
+            return tokens[currentTokenIndex];
+          }
+
+          function matchToken(type) {
+            if (peekToken().type === type) {
+              return consumeToken();
+            }
+            throw new Error("Unexpected token type");
+          }
+
+          function parseNumber() {
+            return matchToken("NUMBER");
+          }
+
+          function parseExpression() {
+            // Verificar se é uma atribuição
+            if (
+              peekToken() &&
+              peekToken().type === "IDENTIFIER" &&
+              tokens[currentTokenIndex + 1] &&
+              tokens[currentTokenIndex + 1].value === "="
+            ) {
+              return parseAssignment();
+            }
+            var node = parseTerm();
+
+            while (
+              peekToken() &&
+              peekToken().type === "OPERATOR" &&
+              (peekToken().value === "+" || peekToken().value === "-")
+            ) {
+              var operator = consumeToken();
+              var right = parseTerm();
+              node = {
+                type: "BinaryExpression",
+                operator: operator.value,
+                left: node,
+                right: right,
+              };
+            }
+
+            return node;
+          }
+
+          function parseTerm() {
+            var node = parseFactor();
+
+            while (
+              peekToken() &&
+              peekToken().type === "OPERATOR" &&
+              (peekToken().value === "*" || peekToken().value === "/")
+            ) {
+              var operator = consumeToken();
+              var right = parseFactor();
+              node = {
+                type: "BinaryExpression",
+                operator: operator.value,
+                left: node,
+                right: right,
+              };
+            }
+
+            return node;
+          }
+
+          function parseAssignment() {
+            var identifier = matchToken("IDENTIFIER");
+            matchToken("OPERATOR", "=");
+            var value = parseExpression();
+            return { type: "Assignment", name: identifier.value, value: value };
+          }
+
+          function parseFactor() {
+            if (peekToken() && peekToken().type === "NUMBER") {
+              return { type: "Number", value: parseNumber().value };
+            } else if (peekToken() && peekToken().type === "IDENTIFIER") {
+              return {
+                type: "Identifier",
+                name: matchToken("IDENTIFIER").value,
+              };
+            } else if (peekToken() && peekToken().value === "(") {
+              consumeToken(); // Consumindo '('
+              var expr = parseExpression();
+              if (peekToken() && peekToken().value === ")") {
+                consumeToken(); // Consumindo ')'
+              } else {
+                throw new Error("Expected closing parenthesis");
+              }
+              return expr;
+            }
+            throw new Error("Unexpected token in factor");
+          }
+
+          return parseExpression(); // Inicia o processamento com uma expressão
+        }
+
+        function evaluate(node) {
+          switch (node.type) {
+            case "Assignment":
+              variables[node.name] = evaluate(node.value);
+              return variables[node.name];
+            case "Identifier":
+              if (variables.hasOwnProperty(node.name)) {
+                return variables[node.name];
+              }
+              throw new Error("Undefined variable: " + node.name);
+            case "Number":
+              return node.value;
+            case "BinaryExpression":
+              var left = evaluate(node.left);
+              var right = evaluate(node.right);
+              switch (node.operator) {
+                case "+":
+                  return left + right;
+                case "-":
+                  return left - right;
+                case "*":
+                  return left * right;
+                case "/":
+                  if (right === 0) {
+                    throw new Error("Division by zero");
+                  }
+                  return left / right;
+                default:
+                  throw new Error("Unsupported operator: " + node.operator);
+              }
+            default:
+              throw new Error("Unsupported node type: " + node.type);
+          }
+        }
+
+        document
+          .getElementById("executeButton")
+          .addEventListener("click", executePython);
+      });
+      // Restante do código para lexer, parser, e evaluate...
+      // (Continue com suas funções aqui fora do escopo do DOMContentLoaded)
+    </script>
+  </body>
+</html>
