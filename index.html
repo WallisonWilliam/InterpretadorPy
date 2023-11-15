@@ -11,21 +11,24 @@
 
     <script>
       document.addEventListener("DOMContentLoaded", function () {
-        // A variável 'variables' é declarada aqui, no escopo do evento 'DOMContentLoaded'
-        // Isso permite que ela seja acessível pelas funções 'executePython', 'evaluate', e outras.
         var variables = {};
-        // Definindo a função executePython
+
         function executePython() {
+          var outputElement = document.getElementById("output");
+          outputElement.innerText = ""; // Limpa a saída anterior
+          var pythonCode = document.getElementById("pythonCode").value;
           try {
-            var pythonCode = document.getElementById("pythonCode").value;
             var tokens = lexer(pythonCode);
-            var expression = parser(tokens);
-            var result = evaluate(expression);
-            document.getElementById("output").innerText = "Output: " + result;
+            var parsed = parser(tokens);
+            parsed.forEach(function (expression) {
+              var result = evaluate(expression);
+              if (result !== undefined) {
+                // Se evaluate retornar algo, exiba.
+                outputElement.innerText += result + "\n";
+              }
+            });
           } catch (error) {
-            // Aqui capturamos o erro e o mostramos no elemento de saída
-            document.getElementById("output").innerText =
-              "Error: " + error.message;
+            outputElement.innerText = "Error: " + error.message; // Exibe erros no elemento de output.
           }
         }
 
@@ -38,7 +41,17 @@
           var i = 0;
 
           while (i < input.length) {
+            // Pula espaços em branco
+            while (input[i] === " ") {
+              i++;
+            }
             var currentChar = input[i];
+            // Verifique se é uma função 'print'
+            if (input.substring(i, i + 5) === "print" && input[i + 5] === "(") {
+              tokens.push({ type: "FUNCTION", value: "print" });
+              i += 5; // Pular o comprimento da palavra 'print'
+              continue;
+            }
 
             // Verificando se o caractere é um número
             if (
@@ -107,36 +120,87 @@
 
         function parser(tokens) {
           var currentTokenIndex = 0;
+          var expressions = [];
 
           function consumeToken() {
             return tokens[currentTokenIndex++];
+          }
+
+          function parse() {
+            var expressions = [];
+            while (currentTokenIndex < tokens.length) {
+              var expression = parseExpression();
+              expressions.push(expression);
+            }
+            return expressions;
+          }
+
+          return parse(); // Return an array of expressions
+
+          function parseFunctionCall() {
+            var value = matchToken("FUNCTION").value;
+            matchToken("PARENTHESIS", "("); // Consumir o parêntese de abertura
+            var args = [];
+            if (peekToken() && peekToken().value !== ")") {
+              do {
+                args.push(parseExpression());
+                // Se o próximo token é uma vírgula, consuma-a
+                if (peekToken() && peekToken().value === ",") {
+                  consumeToken(); // Consumir a vírgula
+                }
+              } while (peekToken() && peekToken().value !== ")");
+            }
+            matchToken("PARENTHESIS", ")"); // Consumir o parêntese de fechamento
+            return { type: "FunctionCall", name: value, arguments: args };
           }
 
           function peekToken() {
             return tokens[currentTokenIndex];
           }
 
-          function matchToken(type) {
-            if (peekToken().type === type) {
-              return consumeToken();
+          function matchToken(expectedType, expectedValue) {
+            var token = peekToken();
+            if (!token) {
+              throw new Error("Unexpected end of input");
             }
-            throw new Error("Unexpected token type");
+            if (
+              token.type !== expectedType ||
+              (expectedValue !== undefined && token.value !== expectedValue)
+            ) {
+              throw new Error(
+                `Expected token type ${expectedType} but found ${token.type}`
+              );
+            }
+            return consumeToken();
           }
 
           function parseNumber() {
-            return matchToken("NUMBER");
+            var numberToken = consumeToken();
+            return { type: "Number", value: numberToken.value };
           }
 
           function parseExpression() {
-            // Verificar se é uma atribuição
+            // Se for uma atribuição
             if (
               peekToken() &&
               peekToken().type === "IDENTIFIER" &&
               tokens[currentTokenIndex + 1] &&
+              tokens[currentTokenIndex + 1].type === "OPERATOR" &&
               tokens[currentTokenIndex + 1].value === "="
             ) {
               return parseAssignment();
             }
+
+            // Se for uma chamada de função
+            if (peekToken() && peekToken().type === "FUNCTION") {
+              return parseFunctionCall();
+            }
+
+            // Caso contrário, deve ser uma expressão matemática ou um número
+            return parseBinaryExpression();
+          }
+
+          function parseBinaryExpression() {
             var node = parseTerm();
 
             while (
@@ -221,6 +285,14 @@
               throw new Error("Undefined variable: " + node.name);
             case "Number":
               return node.value;
+            case "FunctionCall":
+              if (node.name === "print") {
+                var evaluatedArgs = node.arguments.map((arg) => evaluate(arg));
+                document.getElementById("output").innerText +=
+                  evaluatedArgs.join(" ") + "\n";
+                return;
+              }
+              throw new Error("Unsupported function: " + node.name);
             case "BinaryExpression":
               var left = evaluate(node.left);
               var right = evaluate(node.right);
@@ -241,6 +313,17 @@
               }
             default:
               throw new Error("Unsupported node type: " + node.type);
+          }
+          if (node.type === "FunctionCall") {
+            switch (node.name) {
+              case "print":
+                // Avaliar os argumentos da função e imprimir
+                var evaluatedArgs = node.arguments.map((arg) => evaluate(arg));
+                document.getElementById("output").innerText +=
+                  evaluatedArgs.join(" ") + "\n";
+                return null; // O print não retorna nada
+              // Adicionar outros casos para diferentes funções aqui
+            }
           }
         }
 
