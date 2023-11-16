@@ -21,11 +21,7 @@
             var tokens = lexer(pythonCode);
             var parsed = parser(tokens);
             parsed.forEach(function (expression) {
-              var result = evaluate(expression);
-              if (result !== undefined) {
-                // Se evaluate retornar algo, exiba.
-                outputElement.innerText += result + "\n";
-              }
+              evaluate(expression); // Apenas avalia, não tenta imprimir o resultado
             });
           } catch (error) {
             outputElement.innerText = "Error: " + error.message; // Exibe erros no elemento de output.
