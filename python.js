@@ -14,6 +14,7 @@ document.addEventListener("DOMContentLoaded", function () {
     } catch (error) {
       outputElement.innerText = "Error: " + error.message; // Exibe erros no elemento de output.
     }
+    variables = {}; // Adiciona esta linha para limpar o estado das variáveis
   }
 
   document
@@ -157,43 +158,26 @@ document.addEventListener("DOMContentLoaded", function () {
       return tokens[currentTokenIndex];
     }
 
+    // No parser, atualize a função parseIfStatement para lidar com blocos de código com indentação:
     function parseIfStatement() {
-      consumeToken("IF"); // Consumir a palavra-chave 'if'
-      // Remover a parte de consumir parênteses já que o Python não usa parênteses em declarações 'if'
-      var condition = parseExpression(); // Analisar a condição do 'if'
+      consumeToken("IF");
+      var condition = parseExpression();
+      consumeToken("COLON");
+      consumeToken("INDENT"); // Assumindo que o lexer pode gerar um token INDENT
+      var trueBranch = [];
 
-      var trueBranch;
-      var falseBranch;
-
-      consumeToken("COLON"); // Consumir os dois-pontos ':'
-
-      // Aqui você deve implementar a lógica para identificar se o próximo token está indentado
-      // Para simplificar, vamos assumir que o verdadeiro ramo é apenas a próxima expressão ou bloco
-
-      // Verificar se é o início de um novo bloco baseado em indentação ou uma nova linha
-      if (isStartOfBlock()) {
-        // isStartOfBlock é uma função hipotética que você precisará implementar
-        trueBranch = parseBlock();
-      } else {
-        trueBranch = parseExpression(); // Se não for um bloco, apenas analise a próxima expressão
+      while (peekToken().type !== "DEDENT") {
+        trueBranch.push(parseStatement());
       }
+      consumeToken("DEDENT");
 
-      // Opcionalmente, você pode verificar e analisar um ramo 'false' para declarações 'else' ou 'elif'
-
-      return { type: "IfStatement", condition, trueBranch, falseBranch };
+      return { type: "IfStatement", condition, trueBranch };
     }
 
     function parseIndentedBlock() {
-      // Implemente a lógica de análise do bloco com base na indentação.
-      // Isso pode ser complexo, pois envolve a análise baseada na quantidade de espaços ou tabulações.
-      // Para simplificar, você pode começar assumindo que cada declaração dentro do bloco está em uma nova linha.
       var statements = [];
-      var nextToken = peekToken();
-      while (nextToken && nextToken.type !== "DEDENT") {
-        // 'DEDENT' é um tipo de token fictício para indicar o fim da indentação
-        statements.push(parseStatement());
-        nextToken = peekToken();
-      }
+      // Simplificação: assumindo um único statement no bloco
+      statements.push(parseStatement());
       return { type: "Block", statements };
     }
 
@@ -259,6 +243,24 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     function parseExpression() {
+      // Verifica se o próximo token é um parêntese abrindo
+      if (
+        peekToken() &&
+        peekToken().type === "PARENTHESIS" &&
+        peekToken().value === "("
+      ) {
+        consumeToken(); // Consome '('
+        var expr = parseExpression(); // Processa a expressão interna
+        if (
+          !peekToken() ||
+          peekToken().type !== "PARENTHESIS" ||
+          peekToken().value !== ")"
+        ) {
+          throw new Error("Expected closing parenthesis");
+        }
+        consumeToken(); // Consome ')'
+        return expr;
+      }
       // Se for uma atribuição
       if (
         peekToken() &&
@@ -395,13 +397,10 @@ document.addEventListener("DOMContentLoaded", function () {
             throw new Error("Unsupported operator: " + node.operator);
         }
       case "IfStatement":
-        if (node.type === "IfStatement") {
-          if (evaluate(node.condition)) {
-            return evaluate(node.trueBranch);
-          } else if (node.falseBranch) {
-            return evaluate(node.falseBranch);
-          }
+        if (evaluate(node.condition)) {
+          node.trueBranch.forEach((statement) => evaluate(statement));
         }
+        break;
       default:
         throw new Error("Unsupported node type: " + node.type);
     }
