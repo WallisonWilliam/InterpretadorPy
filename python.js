@@ -29,13 +29,19 @@ document.addEventListener("DOMContentLoaded", function () {
       while (input[i] === " ") {
         i++;
       }
+
       var currentChar = input[i];
       // Verifique se é uma função 'print'
       if (input.substring(i, i + 5) === "print" && input[i + 5] === "(") {
         tokens.push({ type: "FUNCTION", value: "print" });
         i += 5; // Pular o comprimento da palavra 'print'
-        currentChar = input[i];
-        console.log(currentChar);
+        continue;
+      }
+
+      // Reconhecendo a palavra-chave 'if'
+      if (input.substring(i, i + 2) === "if" && /\s/.test(input[i + 2])) {
+        tokens.push({ type: "IF", value: "if" });
+        i += 2; // Pular o comprimento da palavra 'if'
         continue;
       }
 
@@ -75,6 +81,13 @@ document.addEventListener("DOMContentLoaded", function () {
       if (currentChar === "(" || currentChar === ")") {
         tokens.push({ type: "PARENTHESIS", value: currentChar });
         i++;
+        continue;
+      }
+
+      // Reconhecendo os dois-pontos ':'
+      if (currentChar === ":") {
+        tokens.push({ type: "COLON", value: ":" });
+        i++; // Pular o caractere ':'
         continue;
       }
 
@@ -144,6 +157,86 @@ document.addEventListener("DOMContentLoaded", function () {
       return tokens[currentTokenIndex];
     }
 
+    function parseIfStatement() {
+      consumeToken("IF"); // Consumir a palavra-chave 'if'
+      // Remover a parte de consumir parênteses já que o Python não usa parênteses em declarações 'if'
+      var condition = parseExpression(); // Analisar a condição do 'if'
+
+      var trueBranch;
+      var falseBranch;
+
+      consumeToken("COLON"); // Consumir os dois-pontos ':'
+
+      // Aqui você deve implementar a lógica para identificar se o próximo token está indentado
+      // Para simplificar, vamos assumir que o verdadeiro ramo é apenas a próxima expressão ou bloco
+
+      // Verificar se é o início de um novo bloco baseado em indentação ou uma nova linha
+      if (isStartOfBlock()) {
+        // isStartOfBlock é uma função hipotética que você precisará implementar
+        trueBranch = parseBlock();
+      } else {
+        trueBranch = parseExpression(); // Se não for um bloco, apenas analise a próxima expressão
+      }
+
+      // Opcionalmente, você pode verificar e analisar um ramo 'false' para declarações 'else' ou 'elif'
+
+      return { type: "IfStatement", condition, trueBranch, falseBranch };
+    }
+
+    function parseIndentedBlock() {
+      // Implemente a lógica de análise do bloco com base na indentação.
+      // Isso pode ser complexo, pois envolve a análise baseada na quantidade de espaços ou tabulações.
+      // Para simplificar, você pode começar assumindo que cada declaração dentro do bloco está em uma nova linha.
+      var statements = [];
+      var nextToken = peekToken();
+      while (nextToken && nextToken.type !== "DEDENT") {
+        // 'DEDENT' é um tipo de token fictício para indicar o fim da indentação
+        statements.push(parseStatement());
+        nextToken = peekToken();
+      }
+      return { type: "Block", statements };
+    }
+
+    function parseStatement() {
+      var nextToken = peekToken();
+      if (!nextToken) {
+        throw new Error("Unexpected end of input while parsing a statement");
+      }
+
+      switch (nextToken.type) {
+        case "FUNCTION":
+          return parseFunctionCall();
+        case "IDENTIFIER":
+          if (
+            tokens[currentTokenIndex + 1] &&
+            tokens[currentTokenIndex + 1].type === "OPERATOR" &&
+            tokens[currentTokenIndex + 1].value === "="
+          ) {
+            // Este é o começo de uma atribuição
+            return parseAssignment();
+          } else {
+            // Se não for uma atribuição, pode ser uma expressão ou um erro
+            return parseExpression();
+          }
+        // Adicionar mais casos conforme necessário para outros tipos de declarações
+        default:
+          throw new Error(
+            "Unknown statement starting with token: " + nextToken.type
+          );
+      }
+    }
+
+    function parseBlock() {
+      var statements = [];
+      matchToken("BRACE", "{"); // Verificar se tem uma chave abrindo o bloco
+      while (!peekToken("BRACE", "}")) {
+        // Enquanto não encontrar uma chave fechando o bloco
+        statements.push(parseStatement()); // Analisar cada declaração dentro do bloco
+      }
+      matchToken("BRACE", "}"); // Consumir a chave que fecha o bloco
+      return { type: "Block", statements }; // Retornar um objeto representando o bloco
+    }
+
     function matchToken(expectedType, expectedValue) {
       var token = peekToken();
       if (!token) {
@@ -177,6 +270,9 @@ document.addEventListener("DOMContentLoaded", function () {
         return parseAssignment();
       }
 
+      if (peekToken() && peekToken().type === "IF") {
+        return parseIfStatement();
+      }
       // Se for uma chamada de função
       if (peekToken() && peekToken().type === "FUNCTION") {
         return parseFunctionCall();
@@ -294,8 +390,17 @@ document.addEventListener("DOMContentLoaded", function () {
               throw new Error("Division by zero");
             }
             return left / right;
+
           default:
             throw new Error("Unsupported operator: " + node.operator);
+        }
+      case "IfStatement":
+        if (node.type === "IfStatement") {
+          if (evaluate(node.condition)) {
+            return evaluate(node.trueBranch);
+          } else if (node.falseBranch) {
+            return evaluate(node.falseBranch);
+          }
         }
       default:
         throw new Error("Unsupported node type: " + node.type);
@@ -317,5 +422,3 @@ document.addEventListener("DOMContentLoaded", function () {
     .getElementById("executeButton")
     .addEventListener("click", executePython);
 });
-// Restante do código para lexer, parser, e evaluate...
-// (Continue com suas funções aqui fora do escopo do DOMContentLoaded)
